@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -69,7 +70,6 @@
   <audio id="music" preload="auto" loop></audio>
 
   <script>
-    // Repo GitHub của m
     const REPO_OWNER = "khonnan135797531";
     const REPO_NAME = "khonnan135797531.github.io";
 
@@ -85,7 +85,7 @@
     let currentSoundHash = null;
     let busy = false;
 
-    // Lấy số thứ tự từ tên file: anh1.jpg, anh2.png...
+    // Lấy số thứ tự từ tên file
     function getNumber(filename, prefix) {
       const match = filename.match(
         new RegExp("^" + prefix + "(\\d+)\\.", "i")
@@ -94,7 +94,7 @@
       return match ? Number(match[1]) : null;
     }
 
-    // Đọc danh sách ảnh và nhạc trực tiếp từ GitHub
+    // Tự tìm ảnh và nhạc trong repo GitHub
     async function loadFiles() {
       try {
         const url =
@@ -108,6 +108,7 @@
 
         const files = await response.json();
 
+        // Tìm toàn bộ ảnh và sắp xếp theo số
         photos = files
           .filter(file =>
             file.type === "file" &&
@@ -119,12 +120,12 @@
           }))
           .sort((a, b) => a.number - b.number);
 
+        // Tìm toàn bộ file nhạc
         const audioFiles = files.filter(file =>
           file.type === "file" &&
           /^nhac\d+\.mp3$/i.test(file.name)
         );
 
-        // Ghép nhạc theo số thứ tự
         for (const file of audioFiles) {
           const number = getNumber(file.name, "nhac");
 
@@ -136,27 +137,25 @@
 
         if (photos.length === 0) {
           message.textContent =
-            "Chưa tìm thấy ảnh. Hãy kiểm tra tên file anh1.jpg, anh2.jpg...";
+            "Chưa tìm thấy ảnh. Hãy kiểm tra tên anh1.jpg, anh2.jpg...";
           return;
         }
 
-        // So sánh nội dung các file nhạc để nhận ra bản sao giống hệt
+        // Kiểm tra các file nhạc có giống hệt nhau không
         await prepareSoundHashes();
 
         showPhoto(0);
-
-        // Thử tự phát nhạc khi mở trang.
-        // Nếu trình duyệt chặn, lần chạm màn hình sẽ thử phát lại.
         await changeMusic(photos[0].number);
 
       } catch (error) {
         console.error(error);
+
         message.textContent =
-          "Không tải được ảnh. Hãy kiểm tra kết nối mạng và repo GitHub.";
+          "Không tải được ảnh. Hãy kiểm tra kết nối mạng hoặc repo GitHub.";
       }
     }
 
-    // Tạo mã SHA-256 cho từng file nhạc
+    // So sánh nội dung file nhạc bằng SHA-256
     async function prepareSoundHashes() {
       if (!window.crypto || !crypto.subtle) return;
 
@@ -173,12 +172,12 @@
             .map(byte => byte.toString(16).padStart(2, "0"))
             .join("");
         } catch (error) {
-          console.warn("Không thể so sánh file nhạc:", error);
+          console.warn("Không thể kiểm tra file nhạc:", error);
         }
       }
     }
 
-    // Hiện ảnh theo thứ tự
+    // Hiển thị ảnh
     function showPhoto(index) {
       currentIndex = index;
 
@@ -186,15 +185,13 @@
       photo.style.display = "block";
       message.style.display = "none";
 
-      counter.textContent =
-        `${index + 1} / ${photos.length}`;
+      counter.textContent = `${index + 1} / ${photos.length}`;
     }
 
-    // Chuyển nhạc, không khởi động lại nếu cùng một bản nhạc
+    // Chuyển nhạc và giữ nhạc chạy liền mạch nếu cùng bản
     async function changeMusic(photoNumber) {
       const sound = sounds.get(photoNumber);
 
-      // Không có nhạc cho ảnh này
       if (!sound) {
         music.pause();
         music.removeAttribute("src");
@@ -203,7 +200,7 @@
         return;
       }
 
-      // Hai file có nội dung giống hệt nhau: giữ nguyên nhạc đang chạy
+      // Nếu là cùng bản nhạc, không khởi động lại
       if (
         sound.hash &&
         currentSoundHash &&
@@ -213,13 +210,12 @@
           try {
             await music.play();
           } catch (error) {
-            // Trình duyệt có thể yêu cầu người dùng chạm màn hình
+            // Có thể cần người dùng chạm màn hình để phát nhạc
           }
         }
         return;
       }
 
-      // Nếu khác bản nhạc, chuyển sang file mới
       music.pause();
       music.src = sound.url;
       music.load();
@@ -229,17 +225,20 @@
       try {
         await music.play();
       } catch (error) {
-        // Sẽ thử phát lại ở lần chạm màn hình tiếp theo
+        // Thử phát lại khi người dùng chạm màn hình
       }
     }
 
-    // Chạm hoặc click để sang ảnh tiếp theo
+    // Chạm màn hình để sang ảnh tiếp theo
     gallery.addEventListener("click", async () => {
       if (busy || photos.length === 0) return;
 
+      // Đã đến ảnh cuối thì không chuyển tiếp nữa
+      if (currentIndex >= photos.length - 1) return;
+
       busy = true;
 
-      const nextIndex = (currentIndex + 1) % photos.length;
+      const nextIndex = currentIndex + 1;
 
       showPhoto(nextIndex);
       await changeMusic(photos[nextIndex].number);
@@ -247,8 +246,9 @@
       busy = false;
     });
 
-    // Khởi chạy
+    // Khởi chạy website
     loadFiles();
   </script>
 </body>
 </html>
+```
