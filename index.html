@@ -1,42 +1,339 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title> </title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#080808">
+<title></title>
 
-    <style>
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            background: white;
-        }
-
-        .gallery {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-   .gallery img {
-    display: block;
-    width: 60%;
-    max-width: 600px;
-    height: auto;
+<style>
+* {
+    box-sizing: border-box;
 }
-    </style>
+
+html, body {
+    margin: 0;
+    width: 100%;
+    min-height: 100%;
+    background: #080808;
+    overflow-x: hidden;
+}
+
+body {
+    font-family: sans-serif;
+}
+
+.page {
+    width: 100%;
+}
+
+.photo {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    isolation: isolate;
+    background: #080808;
+    cursor: pointer;
+}
+
+.photo-bg {
+    position: absolute;
+    inset: -20px;
+    z-index: -2;
+    background-position: center;
+    background-size: cover;
+    filter: blur(24px) brightness(0.48);
+    transform: scale(1.08);
+}
+
+.photo::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: rgba(0, 0, 0, 0.08);
+    pointer-events: none;
+}
+
+.photo img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    animation: breathe 5s ease-in-out infinite;
+    -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes breathe {
+    0%, 100% {
+        filter: brightness(0.96);
+        transform: scale(1);
+    }
+    50% {
+        filter: brightness(1.06);
+        transform: scale(1.012);
+    }
+}
+
+/* Chế độ xem ảnh lớn */
+
+.viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #080808;
+    touch-action: manipulation;
+}
+
+.viewer.show {
+    display: flex;
+    animation: fadeIn 0.35s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.viewer-bg {
+    position: absolute;
+    inset: -20px;
+    background-position: center;
+    background-size: cover;
+    filter: blur(24px) brightness(0.4);
+    transform: scale(1.1);
+}
+
+.viewer img {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    animation: breathe 5s ease-in-out infinite;
+    pointer-events: none;
+}
+
+#rain {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.close {
+    position: absolute;
+    z-index: 3;
+    top: max(16px, env(safe-area-inset-top));
+    right: 18px;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 50%;
+    background: rgba(0,0,0,0.35);
+    color: white;
+    font-size: 25px;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .photo img, .viewer img {
+        animation: none;
+    }
+}
+</style>
 </head>
 
 <body>
-    <div class="gallery">
-        <img src="anh1.jpg" alt="">
-        <img src="anh2.jpg" alt="">
-        <img src="anh3.jpg" alt="">
-    </div>
+
+<main class="page" id="gallery">
+
+    <section class="photo">
+        <div class="photo-bg"></div>
+        <img src="anh1.jpg" alt="" fetchpriority="high">
+    </section>
+
+    <section class="photo">
+        <div class="photo-bg"></div>
+        <img src="anh2.jpg" alt="" loading="lazy">
+    </section>
+
+    <section class="photo">
+        <div class="photo-bg"></div>
+        <img src="anh3.jpg" alt="" loading="lazy">
+    </section>
+
+</main>
+
+<div class="viewer" id="viewer" role="dialog"
+     aria-modal="true" aria-label="Xem ảnh lớn">
+
+    <div class="viewer-bg" id="viewerBg"></div>
+
+    <img id="largeImage" src="" alt="">
+
+    <canvas id="rain"></canvas>
+
+    <button class="close" id="closeBtn"
+            aria-label="Đóng ảnh">&times;</button>
+</div>
+
+<script>
+const sections = document.querySelectorAll(".photo");
+const viewer = document.getElementById("viewer");
+const largeImage = document.getElementById("largeImage");
+const viewerBg = document.getElementById("viewerBg");
+const closeBtn = document.getElementById("closeBtn");
+const canvas = document.getElementById("rain");
+const ctx = canvas.getContext("2d");
+
+let drops = [];
+let animationId = null;
+let previousOverflow = "";
+
+function setBackground(container, img) {
+    const url = `url("${img.src}")`;
+    container.style.backgroundImage = url;
+}
+
+sections.forEach(section => {
+    const img = section.querySelector("img");
+    const bg = section.querySelector(".photo-bg");
+
+    function updateBg() {
+        setBackground(bg, img);
+    }
+
+    if (img.complete && img.naturalWidth) {
+        updateBg();
+    } else {
+        img.addEventListener("load", updateBg);
+    }
+
+    img.addEventListener("click", () => openImage(img));
+    section.addEventListener("click", event => {
+        if (event.target === section || event.target === bg) {
+            openImage(img);
+        }
+    });
+});
+
+function resizeCanvas() {
+    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+
+    canvas.width = Math.floor(window.innerWidth * ratio);
+    canvas.height = Math.floor(window.innerHeight * ratio);
+
+    canvas.style.width = window.innerWidth + "px";
+    canvas.style.height = window.innerHeight + "px";
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    const count = Math.min(
+        100,
+        Math.floor(window.innerWidth / 10)
+    );
+
+    drops = Array.from({ length: count }, () => ({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        length: 8 + Math.random() * 20,
+        speed: 2 + Math.random() * 4,
+        alpha: 0.12 + Math.random() * 0.38
+    }));
+}
+
+function drawRain() {
+    if (!viewer.classList.contains("show")) return;
+
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
+    drops.forEach(drop => {
+        ctx.beginPath();
+        ctx.moveTo(drop.x, drop.y);
+        ctx.lineTo(drop.x - 2, drop.y + drop.length);
+        ctx.strokeStyle = `rgba(255, 15, 45, ${drop.alpha})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        drop.y += drop.speed;
+        drop.x -= 0.5;
+
+        if (drop.y > window.innerHeight) {
+            drop.y = -drop.length;
+            drop.x = Math.random() * window.innerWidth;
+        }
+
+        if (drop.x < 0) {
+            drop.x = window.innerWidth;
+        }
+    });
+
+    animationId = requestAnimationFrame(drawRain);
+}
+
+function openImage(img) {
+    largeImage.src = img.src;
+    setBackground(viewerBg, img);
+
+    previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    viewer.classList.add("show");
+    viewer.setAttribute("aria-hidden", "false");
+
+    resizeCanvas();
+    cancelAnimationFrame(animationId);
+    drawRain();
+
+    closeBtn.focus({ preventScroll: true });
+}
+
+function closeImage() {
+    viewer.classList.remove("show");
+    viewer.setAttribute("aria-hidden", "true");
+
+    document.body.style.overflow = previousOverflow;
+
+    cancelAnimationFrame(animationId);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+}
+
+closeBtn.addEventListener("click", closeImage);
+
+viewer.addEventListener("click", event => {
+    if (event.target === viewer || event.target === viewerBg) {
+        closeImage();
+    }
+});
+
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && viewer.classList.contains("show")) {
+        closeImage();
+    }
+});
+
+window.addEventListener("resize", () => {
+    if (viewer.classList.contains("show")) {
+        resizeCanvas();
+    }
+});
+</script>
+
 </body>
 </html>
