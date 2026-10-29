@@ -2,233 +2,211 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My Gallery</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Gallery</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+<style>
+* { box-sizing: border-box; }
 
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-      background: #000;
-      font-family: Arial, sans-serif;
-    }
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: black;
+}
 
-    #gallery {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
+#gallery {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
-    #photo {
-      max-width: 100%;
-      max-height: 100%;
-      width: auto;
-      height: auto;
-      object-fit: contain;
-    }
+#photo {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 
-    #message {
-      color: white;
-      text-align: center;
-      padding: 20px;
-    }
+#message {
+  color: white;
+  text-align: center;
+}
 
-    #counter {
-      position: fixed;
-      bottom: 14px;
-      right: 16px;
-      color: white;
-      opacity: 0.6;
-      font-size: 12px;
-      pointer-events: none;
-    }
-  </style>
+#counter {
+  position: fixed;
+  right: 16px;
+  bottom: 14px;
+  color: white;
+  opacity: 0.6;
+  pointer-events: none;
+}
+</style>
 </head>
 
 <body>
-  <div id="gallery">
-    <img id="photo" alt="Ảnh" style="display:none">
-    <div id="message">Đang tải ảnh...</div>
-  </div>
+<div id="gallery">
+  <img id="photo" alt="Ảnh" style="display:none">
+  <div id="message">Đang tải ảnh...</div>
+</div>
 
-  <div id="counter"></div>
-  <audio id="music" preload="auto" loop></audio>
+<div id="counter"></div>
+<audio id="music" preload="auto" loop></audio>
 
-  <script>
-    const OWNER = "khonnan135797531";
-    const REPO = "khonnan135797531.github.io";
+<script>
+const OWNER = "khonnan135797531";
+const REPO = "khonnan135797531.github.io";
 
-    const gallery = document.getElementById("gallery");
-    const photo = document.getElementById("photo");
-    const message = document.getElementById("message");
-    const counter = document.getElementById("counter");
-    const music = document.getElementById("music");
+const gallery = document.getElementById("gallery");
+const photo = document.getElementById("photo");
+const message = document.getElementById("message");
+const counter = document.getElementById("counter");
+const music = document.getElementById("music");
 
-    let photos = [];
-    let sounds = {};
-    let currentIndex = 0;
-    let currentSoundHash = null;
-    let busy = false;
-    let finished = false;
+let photos = [];
+let sounds = {};
+let currentIndex = 0;
+let currentSoundHash = null;
+let busy = false;
+let started = false;
 
-    function getNumber(name, prefix) {
-      const match = name.match(
-        new RegExp("^" + prefix + "(\\d+)\\.", "i")
-      );
-      return match ? Number(match[1]) : null;
+function getNumber(name, prefix) {
+  const match = name.match(new RegExp("^" + prefix + "(\\d+)\\.", "i"));
+  return match ? Number(match[1]) : null;
+}
+
+async function loadFiles() {
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${OWNER}/${REPO}/contents/?t=${Date.now()}`
+    );
+
+    if (!response.ok) throw new Error("GitHub không trả về danh sách file.");
+
+    const files = await response.json();
+
+    photos = files
+      .filter(f => f.type === "file" &&
+        /^anh\d+\.(jpg|jpeg|png|webp|gif)$/i.test(f.name))
+      .map(f => ({
+        number: getNumber(f.name, "anh"),
+        url: f.download_url
+      }))
+      .sort((a, b) => a.number - b.number);
+
+    files
+      .filter(f => f.type === "file" && /^nhac\d+\.mp3$/i.test(f.name))
+      .forEach(f => {
+        sounds[getNumber(f.name, "nhac")] = {
+          url: f.download_url,
+          hash: null
+        };
+      });
+
+    if (!photos.length) {
+      message.textContent = "Không tìm thấy ảnh.";
+      return;
     }
 
-    async function loadFiles() {
-      try {
-        const response = await fetch(
-          `https://api.github.com/repos/${OWNER}/${REPO}/contents/`
-        );
+    await prepareHashes();
 
-        if (!response.ok) throw new Error("Không tải được danh sách file.");
+    started = true;
+    showPhoto(0);
+    await changeMusic(photos[0].number);
 
-        const files = await response.json();
+  } catch (error) {
+    console.error(error);
+    message.textContent = "Không tải được ảnh. Hãy thử tải lại trang.";
+  }
+}
 
-        photos = files
-          .filter(f =>
-            f.type === "file" &&
-            /^anh\d+\.(jpg|jpeg|png|webp|gif)$/i.test(f.name)
-          )
-          .map(f => ({
-            number: getNumber(f.name, "anh"),
-            url: f.download_url
-          }))
-          .sort((a, b) => a.number - b.number);
+async function prepareHashes() {
+  if (!window.crypto || !crypto.subtle) return;
 
-        files
-          .filter(f =>
-            f.type === "file" &&
-            /^nhac\d+\.mp3$/i.test(f.name)
-          )
-          .forEach(f => {
-            sounds[getNumber(f.name, "nhac")] = {
-              url: f.download_url,
-              hash: null
-            };
-          });
+  for (const sound of Object.values(sounds)) {
+    try {
+      const response = await fetch(sound.url);
+      if (!response.ok) continue;
 
-        if (photos.length === 0) {
-          message.textContent = "Không tìm thấy ảnh!";
-          return;
-        }
+      const data = await response.arrayBuffer();
+      const hash = await crypto.subtle.digest("SHA-256", data);
 
-        await prepareHashes();
-
-        showPhoto(0);
-        await changeMusic(photos[0].number);
-
-      } catch (error) {
-        console.error(error);
-        message.textContent =
-          "Không tải được ảnh. Hãy kiểm tra mạng hoặc GitHub.";
-      }
+      sound.hash = Array.from(new Uint8Array(hash))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+    } catch (error) {
+      console.warn("Không kiểm tra được file nhạc:", error);
     }
+  }
+}
 
-    async function prepareHashes() {
-      if (!crypto.subtle) return;
+function showPhoto(index) {
+  photo.src = photos[index].url;
+  photo.style.display = "block";
+  message.style.display = "none";
+  counter.textContent = `${index + 1} / ${photos.length}`;
+}
 
-      for (const sound of Object.values(sounds)) {
-        try {
-          const response = await fetch(sound.url);
-          if (!response.ok) continue;
+async function changeMusic(number) {
+  const sound = sounds[number];
 
-          const data = await response.arrayBuffer();
-          const hash = await crypto.subtle.digest("SHA-256", data);
+  if (!sound) {
+    music.pause();
+    music.removeAttribute("src");
+    music.load();
+    currentSoundHash = null;
+    return;
+  }
 
-          sound.hash = Array.from(new Uint8Array(hash))
-            .map(b => b.toString(16).padStart(2, "0"))
-            .join("");
-        } catch (error) {
-          console.warn(error);
-        }
-      }
+  if (sound.hash && currentSoundHash &&
+      sound.hash === currentSoundHash) {
+    if (music.paused) {
+      try { await music.play(); } catch (error) {}
     }
+    return;
+  }
 
-    function showPhoto(index) {
-      currentIndex = index;
-      photo.src = photos[index].url;
-      photo.style.display = "block";
-      message.style.display = "none";
-      counter.textContent = `${index + 1} / ${photos.length}`;
-    }
+  music.pause();
+  music.src = sound.url;
+  music.load();
+  currentSoundHash = sound.hash;
 
-    async function changeMusic(number) {
-      const sound = sounds[number];
+  try { await music.play(); } catch (error) {}
+}
 
-      if (!sound) {
-        music.pause();
-        music.removeAttribute("src");
-        music.load();
-        currentSoundHash = null;
-        return;
-      }
+gallery.addEventListener("click", async function () {
+  if (!started || busy) return;
 
-      if (
-        sound.hash &&
-        currentSoundHash &&
-        sound.hash === currentSoundHash
-      ) {
-        if (music.paused) {
-          try {
-            await music.play();
-          } catch (error) {}
-        }
-        return;
-      }
+  // QUAN TRỌNG: Ở ảnh cuối thì thoát ngay.
+  if (currentIndex >= photos.length - 1) return;
 
-      music.pause();
-      music.src = sound.url;
-      music.load();
-      currentSoundHash = sound.hash;
+  busy = true;
 
-      try {
-        await music.play();
-      } catch (error) {}
-    }
+  // Chỉ tăng chỉ số, tuyệt đối không quay về 0.
+  const nextIndex = currentIndex + 1;
 
-    gallery.addEventListener("click", async function () {
-      // Chặn mọi lần bấm khi đang xử lý hoặc đã đến ảnh cuối
-      if (busy || finished || photos.length === 0) return;
+  // Chặn nếu chỉ số vượt giới hạn.
+  if (nextIndex >= photos.length) {
+    busy = false;
+    return;
+  }
 
-      // Đánh dấu kết thúc trước khi xử lý bất kỳ thao tác nào
-      if (currentIndex === photos.length - 1) {
-        finished = true;
-        return;
-      }
+  currentIndex = nextIndex;
+  showPhoto(currentIndex);
 
-      busy = true;
+  await changeMusic(photos[currentIndex].number);
 
-      const nextIndex = currentIndex + 1;
+  busy = false;
+});
 
-      showPhoto(nextIndex);
-      await changeMusic(photos[nextIndex].number);
-
-      // Đến ảnh cuối thì khóa hẳn việc chuyển ảnh
-      if (currentIndex === photos.length - 1) {
-        finished = true;
-      }
-
-      busy = false;
-    });
-
-    loadFiles();
-  </script>
+loadFiles();
+</script>
 </body>
 </html>
 ```
